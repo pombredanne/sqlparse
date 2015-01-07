@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from tests.utils import TestCaseBase
+import sys
+
+from tests.utils import TestCaseBase, load_file
 
 import sqlparse
 from sqlparse import sql
@@ -134,3 +136,111 @@ def test_issue78():
         for func_name, result in results:
             func = getattr(i, func_name)
             assert func() == result
+
+
+def test_issue83():
+    sql = """
+CREATE OR REPLACE FUNCTION func_a(text)
+  RETURNS boolean  LANGUAGE plpgsql STRICT IMMUTABLE AS
+$_$
+BEGIN
+ ...
+END;
+$_$;
+
+CREATE OR REPLACE FUNCTION func_b(text)
+  RETURNS boolean  LANGUAGE plpgsql STRICT IMMUTABLE AS
+$_$
+BEGIN
+ ...
+END;
+$_$;
+
+ALTER TABLE..... ;"""
+    t = sqlparse.split(sql)
+    assert len(t) == 3
+
+
+def test_comment_encoding_when_reindent():
+    # There was an UnicodeEncodeError in the reindent filter that
+    # casted every comment followed by a keyword to str.
+    sql = u'select foo -- Comment containing Ümläuts\nfrom bar'
+    formatted = sqlparse.format(sql, reindent=True)
+    assert formatted == sql
+
+
+def test_parse_sql_with_binary():
+    # See https://github.com/andialbrecht/sqlparse/pull/88
+    digest = '\x82|\xcb\x0e\xea\x8aplL4\xa1h\x91\xf8N{'
+    sql = 'select * from foo where bar = \'%s\'' % digest
+    formatted = sqlparse.format(sql, reindent=True)
+    tformatted = 'select *\nfrom foo\nwhere bar = \'%s\'' % digest
+    if sys.version_info < (3,):
+        tformatted = tformatted.decode('unicode-escape')
+    assert formatted == tformatted
+
+
+def test_dont_alias_keywords():
+    # The _group_left_right function had a bug where the check for the
+    # left side wasn't handled correctly. In one case this resulted in
+    # a keyword turning into an identifier.
+    p = sqlparse.parse('FROM AS foo')[0]
+    assert len(p.tokens) == 5
+    assert p.tokens[0].ttype is T.Keyword
+    assert p.tokens[2].ttype is T.Keyword
+
+
+def test_format_accepts_encoding():  # issue20
+    sql = load_file('test_cp1251.sql', 'cp1251')
+    formatted = sqlparse.format(sql, reindent=True, encoding='cp1251')
+    if sys.version_info < (3,):
+        tformatted = u'insert into foo\nvalues (1); -- Песня про надежду\n'
+    else:
+        tformatted = 'insert into foo\nvalues (1); -- Песня про надежду\n'
+    assert formatted == tformatted
+
+
+def test_issue90():
+    sql = ('UPDATE "gallery_photo" SET "owner_id" = 4018, "deleted_at" = NULL,'
+           ' "width" = NULL, "height" = NULL, "rating_votes" = 0,'
+           ' "rating_score" = 0, "thumbnail_width" = NULL,'
+           ' "thumbnail_height" = NULL, "price" = 1, "description" = NULL')
+    formatted = sqlparse.format(sql, reindent=True)
+    tformatted = '\n'.join(['UPDATE "gallery_photo"',
+                            'SET "owner_id" = 4018,',
+                            '    "deleted_at" = NULL,',
+                            '    "width" = NULL,',
+                            '    "height" = NULL,',
+                            '    "rating_votes" = 0,',
+                            '    "rating_score" = 0,',
+                            '    "thumbnail_width" = NULL,',
+                            '    "thumbnail_height" = NULL,',
+                            '    "price" = 1,',
+                            '    "description" = NULL'])
+    assert formatted == tformatted
+
+
+def test_except_formatting():
+    sql = 'SELECT 1 FROM foo WHERE 2 = 3 EXCEPT SELECT 2 FROM bar WHERE 1 = 2'
+    formatted = sqlparse.format(sql, reindent=True)
+    tformatted = '\n'.join([
+        'SELECT 1',
+        'FROM foo',
+        'WHERE 2 = 3',
+        'EXCEPT',
+        'SELECT 2',
+        'FROM bar',
+        'WHERE 1 = 2'
+    ])
+    assert formatted == tformatted
+
+
+def test_null_with_as():
+    sql = 'SELECT NULL AS c1, NULL AS c2 FROM t1'
+    formatted = sqlparse.format(sql, reindent=True)
+    tformatted = '\n'.join([
+        'SELECT NULL AS c1,',
+        '       NULL AS c2',
+        'FROM t1'
+    ])
+    assert formatted == tformatted

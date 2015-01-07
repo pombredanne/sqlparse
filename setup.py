@@ -4,7 +4,16 @@
 # the BSD License: http://www.opensource.org/licenses/bsd-license.php.
 
 import re
-from setuptools import setup, find_packages
+import sys
+
+try:
+    from setuptools import setup, find_packages
+    packages = find_packages(exclude=('tests',))
+except ImportError:
+    if sys.version_info[0] == 3:
+        raise RuntimeError('distribute is required to install this package.')
+    from distutils.core import setup
+    packages = ['sqlparse', 'sqlparse.engine']
 
 
 def get_version():
@@ -75,20 +84,20 @@ Parsing::
 """
 
 VERSION = get_version()
-DOWNLOAD_URL = (
-    'https://github.com/downloads/andialbrecht/sqlparse/'
-    'sqlparse-%s.tar.gz' % VERSION
-)
+
+
+kwargs = {}
+if sys.version_info[0] == 3:
+    kwargs['use_2to3'] = True
 
 
 setup(
     name='sqlparse',
     version=VERSION,
-    packages=find_packages(),
+    packages=packages,
     description='Non-validating SQL parser',
     author='Andi Albrecht',
     author_email='albrecht.andi@gmail.com',
-    download_url=DOWNLOAD_URL,
     long_description=LONG_DESCRIPTION,
     license='BSD',
     url='https://github.com/andialbrecht/sqlparse',
@@ -99,6 +108,7 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.4',
         'Programming Language :: Python :: 2.5',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
@@ -109,4 +119,5 @@ setup(
         'Topic :: Software Development'
     ],
     scripts=['bin/sqlformat'],
+    **kwargs
 )

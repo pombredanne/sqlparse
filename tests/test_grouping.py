@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import pytest
+
 import sqlparse
 from sqlparse import sql
 from sqlparse import tokens as T
@@ -58,6 +60,15 @@ class TestGrouping(TestCaseBase):
         types = [l.ttype for l in parsed.tokens if not l.is_whitespace()]
         self.assertEquals(types, [T.DML, T.Keyword, None,
                                   T.Keyword, None, T.Punctuation])
+
+        s = "select 1.0*(a+b) as col, sum(c)/sum(d) from myschema.mytable"
+        parsed = sqlparse.parse(s)[0]
+        self.assertEqual(len(parsed.tokens), 7)
+        self.assert_(isinstance(parsed.tokens[2], sql.IdentifierList))
+        self.assertEqual(len(parsed.tokens[2].tokens), 4)
+        identifiers = list(parsed.tokens[2].get_identifiers())
+        self.assertEqual(len(identifiers), 2)
+        self.assertEquals(identifiers[0].get_alias(), u"col")
 
     def test_identifier_wildcard(self):
         p = sqlparse.parse('a.*, b.id')[0]
@@ -227,7 +238,104 @@ def test_identifier_with_op_trailing_ws():
     assert p.tokens[1].ttype is T.Whitespace
 
 
-def test_identifier_string_concat():
-    p = sqlparse.parse('\'foo\' || bar')[0]
+def test_identifier_with_string_literals():
+    p = sqlparse.parse('foo + \'bar\'')[0]
     assert len(p.tokens) == 1
     assert isinstance(p.tokens[0], sql.Identifier)
+
+
+# This test seems to be wrong. It was introduced when fixing #53, but #111
+# showed that this shouldn't be an identifier at all. I'm leaving this
+# commented in the source for a while.
+# def test_identifier_string_concat():
+#     p = sqlparse.parse('\'foo\' || bar')[0]
+#     assert len(p.tokens) == 1
+#     assert isinstance(p.tokens[0], sql.Identifier)
+
+
+def test_identifier_consumes_ordering():  # issue89
+    p = sqlparse.parse('select * from foo order by c1 desc, c2, c3')[0]
+    assert isinstance(p.tokens[-1], sql.IdentifierList)
+    ids = list(p.tokens[-1].get_identifiers())
+    assert len(ids) == 3
+    assert ids[0].get_name() == 'c1'
+    assert ids[0].get_ordering() == 'DESC'
+    assert ids[1].get_name() == 'c2'
+    assert ids[1].get_ordering() is None
+
+
+def test_comparison_with_keywords():  # issue90
+    # in fact these are assignments, but for now we don't distinguish them
+    p = sqlparse.parse('foo = NULL')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Comparison)
+    assert len(p.tokens[0].tokens) == 5
+    assert p.tokens[0].left.value == 'foo'
+    assert p.tokens[0].right.value == 'NULL'
+    # make sure it's case-insensitive
+    p = sqlparse.parse('foo = null')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Comparison)
+
+
+def test_comparison_with_floats():  # issue145
+    p = sqlparse.parse('foo = 25.5')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Comparison)
+    assert len(p.tokens[0].tokens) == 5
+    assert p.tokens[0].left.value == 'foo'
+    assert p.tokens[0].right.value == '25.5'
+
+
+def test_comparison_with_parenthesis():  # issue23
+    p = sqlparse.parse('(3 + 4) = 7')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Comparison)
+    comp = p.tokens[0]
+    assert isinstance(comp.left, sql.Parenthesis)
+    assert comp.right.ttype is T.Number.Integer
+
+
+def test_comparison_with_strings():  # issue148
+    p = sqlparse.parse('foo = \'bar\'')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Comparison)
+    assert p.tokens[0].right.value == '\'bar\''
+    assert p.tokens[0].right.ttype == T.String.Single
+
+
+@pytest.mark.parametrize('start', ['FOR', 'FOREACH'])
+def test_forloops(start):
+    p = sqlparse.parse('%s foo in bar LOOP foobar END LOOP' % start)[0]
+    assert (len(p.tokens)) == 1
+    assert isinstance(p.tokens[0], sql.For)
+
+
+def test_nested_for():
+    p = sqlparse.parse('FOR foo LOOP FOR bar LOOP END LOOP END LOOP')[0]
+    assert len(p.tokens) == 1
+    for1 = p.tokens[0]
+    assert for1.tokens[0].value == 'FOR'
+    assert for1.tokens[-1].value == 'END LOOP'
+    for2 = for1.tokens[6]
+    assert isinstance(for2, sql.For)
+    assert for2.tokens[0].value == 'FOR'
+    assert for2.tokens[-1].value == 'END LOOP'
+
+
+def test_begin():
+    p = sqlparse.parse('BEGIN foo END')[0]
+    assert len(p.tokens) == 1
+    assert isinstance(p.tokens[0], sql.Begin)
+
+
+def test_nested_begin():
+    p = sqlparse.parse('BEGIN foo BEGIN bar END END')[0]
+    assert len(p.tokens) == 1
+    outer = p.tokens[0]
+    assert outer.tokens[0].value == 'BEGIN'
+    assert outer.tokens[-1].value == 'END'
+    inner = outer.tokens[4]
+    assert inner.tokens[0].value == 'BEGIN'
+    assert inner.tokens[-1].value == 'END'
+    assert isinstance(inner, sql.Begin)

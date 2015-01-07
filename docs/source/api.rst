@@ -12,6 +12,10 @@ The :mod:`sqlparse` module provides the following functions on module-level.
 
 .. autofunction:: sqlparse.parse
 
+In most cases there's no need to set the `encoding` parameter. If
+`encoding` is not set, sqlparse assumes that the given SQL statement
+is encoded either in utf-8 or latin-1.
+
 
 .. _formatting:
 
@@ -30,6 +34,14 @@ The :meth:`~sqlparse.format` function accepts the following keyword arguments.
 
 ``strip_comments``
   If ``True`` comments are removed from the statements.
+
+``truncate_strings``
+  If ``truncate_strings`` is a positive integer, string literals longer than
+  the given value will be truncated.
+
+``truncate_char`` (default: "[...]")
+  If long string literals are truncated (see above) this value will be append
+  to the truncated string.
 
 ``reindent``
   If ``True`` the indentations of the statements are changed.

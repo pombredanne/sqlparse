@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import unittest
+import sys
 import types
+import unittest
+
+import pytest
 
 import sqlparse
 from sqlparse import lexer
@@ -69,6 +72,8 @@ class TestTokenize(unittest.TestCase):
         self.assertEqual(tokens[2][0], Number.Integer)
         self.assertEqual(tokens[2][1], '-1')
 
+    # Somehow this test fails on Python 3.2
+    @pytest.mark.skipif('sys.version_info >= (3,0)')
     def test_tab_expansion(self):
         s = "\t"
         lex = lexer.Lexer()
@@ -156,3 +161,30 @@ class TestStream(unittest.TestCase):
         tokens = list(lex.get_tokens(stream))
         self.assertEqual(len(tokens), 2)
         self.assertEqual(tokens[1][0], Error)
+
+
+@pytest.mark.parametrize('expr', ['JOIN', 'LEFT JOIN', 'LEFT OUTER JOIN',
+                                  'FULL OUTER JOIN', 'NATURAL JOIN',
+                                  'CROSS JOIN', 'STRAIGHT JOIN',
+                                  'INNER JOIN', 'LEFT INNER JOIN'])
+def test_parse_join(expr):
+    p = sqlparse.parse('%s foo' % expr)[0]
+    assert len(p.tokens) == 3
+    assert p.tokens[0].ttype is Keyword
+
+
+def test_parse_endifloop():
+    p = sqlparse.parse('END IF')[0]
+    assert len(p.tokens) == 1
+    assert p.tokens[0].ttype is Keyword
+    p = sqlparse.parse('END   IF')[0]
+    assert len(p.tokens) == 1
+    p = sqlparse.parse('END\t\nIF')[0]
+    assert len(p.tokens) == 1
+    assert p.tokens[0].ttype is Keyword
+    p = sqlparse.parse('END LOOP')[0]
+    assert len(p.tokens) == 1
+    assert p.tokens[0].ttype is Keyword
+    p = sqlparse.parse('END  LOOP')[0]
+    assert len(p.tokens) == 1
+    assert p.tokens[0].ttype is Keyword

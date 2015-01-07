@@ -2,10 +2,14 @@
 
 """Tests sqlparse function."""
 
+import pytest
+
 from tests.utils import TestCaseBase
 
 import sqlparse
 import sqlparse.sql
+
+from sqlparse import tokens as T
 
 
 class SQLParseTest(TestCaseBase):
@@ -95,6 +99,10 @@ class SQLParseTest(TestCaseBase):
         self.assert_(t[-1].ttype is sqlparse.tokens.Name.Placeholder)
         self.assertEqual(t[-1].value, '$a')
 
+    def test_modulo_not_placeholder(self):
+        tokens = list(sqlparse.lexer.tokenize('x %3'))
+        self.assertEqual(tokens[2][0], sqlparse.tokens.Operator)
+
     def test_access_symbol(self):  # see issue27
         t = sqlparse.parse('select a.[foo bar] as foo')[0].tokens
         self.assert_(isinstance(t[-1], sqlparse.sql.Identifier))
@@ -102,10 +110,32 @@ class SQLParseTest(TestCaseBase):
         self.assertEqual(t[-1].get_real_name(), '[foo bar]')
         self.assertEqual(t[-1].get_parent_name(), 'a')
 
+    def test_square_brackets_notation_isnt_too_greedy(self):  # see issue153
+        t = sqlparse.parse('[foo], [bar]')[0].tokens
+        self.assert_(isinstance(t[0], sqlparse.sql.IdentifierList))
+        self.assertEqual(len(t[0].tokens), 4)
+        self.assertEqual(t[0].tokens[0].get_real_name(), '[foo]')
+        self.assertEqual(t[0].tokens[-1].get_real_name(), '[bar]')
+
     def test_keyword_like_identifier(self):  # see issue47
         t = sqlparse.parse('foo.key')[0].tokens
         self.assertEqual(len(t), 1)
         self.assert_(isinstance(t[0], sqlparse.sql.Identifier))
+
+    def test_function_parameter(self):  # see issue94
+        t = sqlparse.parse('abs(some_col)')[0].tokens[0].get_parameters()
+        self.assertEqual(len(t), 1)
+        self.assert_(isinstance(t[0], sqlparse.sql.Identifier))
+
+    def test_function_param_single_literal(self):
+        t = sqlparse.parse('foo(5)')[0].tokens[0].get_parameters()
+        self.assertEqual(len(t), 1)
+        self.assert_(t[0].ttype is T.Number.Integer)
+
+    def test_nested_function(self):
+        t = sqlparse.parse('foo(bar(5))')[0].tokens[0].get_parameters()
+        self.assertEqual(len(t), 1)
+        self.assert_(type(t[0]) is sqlparse.sql.Function)
 
 
 def test_quoted_identifier():
@@ -113,3 +143,56 @@ def test_quoted_identifier():
     assert isinstance(t[2], sqlparse.sql.Identifier)
     assert t[2].get_name() == 'z'
     assert t[2].get_real_name() == 'y'
+
+
+def test_psql_quotation_marks():  # issue83
+    # regression: make sure plain $$ work
+    t = sqlparse.split("""
+    CREATE OR REPLACE FUNCTION testfunc1(integer) RETURNS integer AS $$
+          ....
+    $$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION testfunc2(integer) RETURNS integer AS $$
+          ....
+    $$ LANGUAGE plpgsql;""")
+    assert len(t) == 2
+    # make sure $SOMETHING$ works too
+    t = sqlparse.split("""
+    CREATE OR REPLACE FUNCTION testfunc1(integer) RETURNS integer AS $PROC_1$
+          ....
+    $PROC_1$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION testfunc2(integer) RETURNS integer AS $PROC_2$
+          ....
+    $PROC_2$ LANGUAGE plpgsql;""")
+    assert len(t) == 2
+
+
+@pytest.mark.parametrize('ph', ['?', ':1', ':foo', '%s', '%(foo)s'])
+def test_placeholder(ph):
+    p = sqlparse.parse(ph)[0].tokens
+    assert len(p) == 1
+    assert p[0].ttype is T.Name.Placeholder
+
+
+@pytest.mark.parametrize('num', ['6.67428E-8', '1.988e33', '1e-12'])
+def test_scientific_numbers(num):
+    p = sqlparse.parse(num)[0].tokens
+    assert len(p) == 1
+    assert p[0].ttype is T.Number.Float
+
+
+def test_single_quotes_are_strings():
+    p = sqlparse.parse("'foo'")[0].tokens
+    assert len(p) == 1
+    assert p[0].ttype is T.String.Single
+
+
+def test_double_quotes_are_identifiers():
+    p = sqlparse.parse('"foo"')[0].tokens
+    assert len(p) == 1
+    assert isinstance(p[0], sqlparse.sql.Identifier)
+
+
+def test_single_quotes_with_linebreaks():  # issue118
+    p = sqlparse.parse("'f\nf'")[0].tokens
+    assert len(p) == 1
+    assert p[0].ttype is T.String.Single

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import pytest
+
 from tests.utils import TestCaseBase
 
 import sqlparse
@@ -74,6 +76,23 @@ class TestFormat(TestCaseBase):
         f = lambda sql: sqlparse.format(sql, strip_whitespace=True)
         s = 'select\n* /* foo */  from bar '
         self.ndiffAssertEqual(f(s), 'select * /* foo */ from bar')
+
+    def test_notransform_of_quoted_crlf(self):
+        # Make sure that CR/CR+LF characters inside string literals don't get
+        # affected by the formatter.
+
+        s1 = "SELECT some_column LIKE 'value\r'"
+        s2 = "SELECT some_column LIKE 'value\r'\r\nWHERE id = 1\n"
+        s3 = "SELECT some_column LIKE 'value\\'\r' WHERE id = 1\r"
+        s4 = "SELECT some_column LIKE 'value\\\\\\'\r' WHERE id = 1\r\n"
+
+        f = lambda x: sqlparse.format(x)
+
+        # Because of the use of
+        self.ndiffAssertEqual(f(s1), "SELECT some_column LIKE 'value\r'")
+        self.ndiffAssertEqual(f(s2), "SELECT some_column LIKE 'value\r'\nWHERE id = 1\n")
+        self.ndiffAssertEqual(f(s3), "SELECT some_column LIKE 'value\\'\r' WHERE id = 1\n")
+        self.ndiffAssertEqual(f(s4), "SELECT some_column LIKE 'value\\\\\\'\r' WHERE id = 1\n")
 
     def test_outputformat(self):
         sql = 'select * from foo;'
@@ -157,6 +176,11 @@ class TestFormatReindent(TestCaseBase):
         self.ndiffAssertEqual(f(s), '\n'.join(['select *',
                                                'from foo',
                                                'left outer join bar on 1 = 2']
+                                              ))
+        s = 'select * from foo straight_join bar on 1 = 2'
+        self.ndiffAssertEqual(f(s), '\n'.join(['select *',
+                                               'from foo',
+                                               'straight_join bar on 1 = 2']
                                               ))
 
     def test_identifier_list(self):
@@ -267,3 +291,53 @@ class TestOutputFormat(TestCaseBase):
         sql = 'select * from foo;'
         f = lambda sql: sqlparse.format(sql, output_format='sql')
         self.ndiffAssertEqual(f(sql), 'select * from foo;')
+
+
+def test_format_column_ordering():  # issue89
+    sql = 'select * from foo order by c1 desc, c2, c3;'
+    formatted = sqlparse.format(sql, reindent=True)
+    expected = '\n'.join(['select *',
+                          'from foo',
+                          'order by c1 desc,',
+                          '         c2,',
+                          '         c3;'])
+    assert formatted == expected
+
+
+def test_truncate_strings():
+    sql = 'update foo set value = \'' + 'x' * 1000 + '\';'
+    formatted = sqlparse.format(sql, truncate_strings=10)
+    assert formatted == 'update foo set value = \'xxxxxxxxxx[...]\';'
+    formatted = sqlparse.format(sql, truncate_strings=3, truncate_char='YYY')
+    assert formatted == 'update foo set value = \'xxxYYY\';'
+
+
+def test_truncate_strings_invalid_option():
+    pytest.raises(SQLParseError, sqlparse.format,
+                  'foo', truncate_strings='bar')
+    pytest.raises(SQLParseError, sqlparse.format,
+                  'foo', truncate_strings=-1)
+    pytest.raises(SQLParseError, sqlparse.format,
+                  'foo', truncate_strings=0)
+
+
+@pytest.mark.parametrize('sql', ['select verrrylongcolumn from foo',
+                                 'select "verrrylongcolumn" from "foo"'])
+def test_truncate_strings_doesnt_truncate_identifiers(sql):
+    formatted = sqlparse.format(sql, truncate_strings=2)
+    assert formatted == sql
+
+
+def test_having_produces_newline():
+    sql = (
+        'select * from foo, bar where bar.id = foo.bar_id'
+        ' having sum(bar.value) > 100')
+    formatted = sqlparse.format(sql, reindent=True)
+    expected = [
+        'select *',
+        'from foo,',
+        '     bar',
+        'where bar.id = foo.bar_id',
+        'having sum(bar.value) > 100'
+    ]
+    assert formatted == '\n'.join(expected)
