@@ -1,4 +1,7 @@
-*.pyc
+# PyCharm
+.idea/
+
+*.py[co]
 docs/build
 dist
 MANIFEST
@@ -13,3 +16,5 @@ extras/py3k/sqlparse
 extras/py3k/tests
 extras/py3k/sqlparse.diff
 extras/py3k/tests.diff
+coverage.xml
+*.class

@@ -4,6 +4,7 @@ python-sqlparse - Parse SQL statements
 sqlparse is a non-validating SQL parser module for Python.
 
 |buildstatus|_
+|coverage|_
 
 
 Install
@@ -15,7 +16,7 @@ Run::
 
 to install python-sqlparse on your system.
 
-python-sqlparse is compatible with Python 2 (>= 2.5) and Python 3 (>= 3.2).
+python-sqlparse is compatible with Python 2.7 and Python 3 (>= 3.3).
 
 
 Run Tests
@@ -35,7 +36,7 @@ Project Page
   https://github.com/andialbrecht/sqlparse
 
 Documentation
-  http://readthedocs.org/docs/sqlparse/en/latest/
+  https://sqlparse.readthedocs.io/en/latest/
 
 Discussions
   http://groups.google.com/group/sqlparse
@@ -54,3 +55,5 @@ pygments-Homepage: http://pygments.org/
 
 .. |buildstatus| image:: https://secure.travis-ci.org/andialbrecht/sqlparse.png?branch=master
 .. _buildstatus: http://travis-ci.org/#!/andialbrecht/sqlparse
+.. |coverage| image:: https://coveralls.io/repos/andialbrecht/sqlparse/badge.svg?branch=master&service=github
+.. _coverage: https://coveralls.io/github/andialbrecht/sqlparse?branch=master
