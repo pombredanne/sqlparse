@@ -3,7 +3,7 @@
 # Copyright (C) 2016 Andi Albrecht, albrecht.andi@gmail.com
 #
 # This module is part of python-sqlparse and is released under
-# the BSD License: http://www.opensource.org/licenses/bsd-license.php
+# the BSD License: https://opensource.org/licenses/BSD-3-Clause
 
 from sqlparse import sql, tokens as T
 from sqlparse.compat import text_type
@@ -11,13 +11,15 @@ from sqlparse.utils import offset, indent
 
 
 class ReindentFilter(object):
-    def __init__(self, width=2, char=' ', wrap_after=0, n='\n'):
+    def __init__(self, width=2, char=' ', wrap_after=0, n='\n',
+                 comma_first=False):
         self.n = n
         self.width = width
         self.char = char
         self.indent = 0
         self.offset = 0
         self.wrap_after = wrap_after
+        self.comma_first = comma_first
         self._curr_stmt = None
         self._last_stmt = None
 
@@ -41,8 +43,10 @@ class ReindentFilter(object):
         # Now take current offset into account and return relative offset.
         return len(line) - len(self.char * self.leading_ws)
 
-    def nl(self):
-        return sql.Token(T.Whitespace, self.n + self.char * self.leading_ws)
+    def nl(self, offset=0):
+        return sql.Token(
+            T.Whitespace,
+            self.n + self.char * max(0, self.leading_ws + offset))
 
     def _next_token(self, tlist, idx=-1):
         split_words = ('FROM', 'STRAIGHT_JOIN$', 'JOIN$', 'AND', 'OR',
@@ -123,7 +127,22 @@ class ReindentFilter(object):
                     # Add 1 for the "," separator
                     position += len(token.value) + 1
                     if position > (self.wrap_after - self.offset):
-                        tlist.insert_before(token, self.nl())
+                        adjust = 0
+                        if self.comma_first:
+                            adjust = -2
+                            _, comma = tlist.token_prev(
+                                tlist.token_index(token))
+                            if comma is None:
+                                continue
+                            token = comma
+                        tlist.insert_before(token, self.nl(offset=adjust))
+                        if self.comma_first:
+                            _, ws = tlist.token_next(
+                                tlist.token_index(token), skip_ws=False)
+                            if (ws is not None
+                                and not ws.ttype is T.Text.Whitespace):
+                                tlist.insert_after(
+                                    token, sql.Token(T.Whitespace, ' '))
                         position = 0
         self._process_default(tlist)
 

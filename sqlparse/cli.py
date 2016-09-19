@@ -4,7 +4,7 @@
 # Copyright (C) 2016 Andi Albrecht, albrecht.andi@gmail.com
 #
 # This module is part of python-sqlparse and is released under
-# the BSD License: http://www.opensource.org/licenses/bsd-license.php
+# the BSD License: https://opensource.org/licenses/BSD-3-Clause
 
 """Module that contains the command line app.
 
@@ -117,6 +117,13 @@ def create_parser():
         default=0,
         type=int,
         help='Column after which lists should be wrapped')
+
+    group.add_argument(
+        '--comma_first',
+        dest='comma_first',
+        default=False,
+        type=bool,
+        help='Insert linebreak before comma (default False)')
 
     return parser
 

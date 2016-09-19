@@ -1,6 +1,17 @@
 Development Version
 -------------------
 
+Enhancements
+
+* Add comma_first option: When splitting list "comma first" notation
+  is used (issue141).
+
+Bug Fixes
+
+* Fix parsing of incomplete AS (issue284, by vmuriart).
+* Fix parsing of Oracle names containing dollars (issue291).
+
+
 Internal Changes
 
 * `is_whitespace` and `is_group` changed into properties
